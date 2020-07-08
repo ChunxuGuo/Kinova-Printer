@@ -9,10 +9,10 @@
 #define Division 16
 #define Pi 3.1415926
 
-float ExtrutionVelocity = 1;// mm/s
+float ExtrutionVelocity = 2;// mm/s
 int interval;
 struct stepper {
-  bool power = true;
+  bool power = false;
   bool dir;
   int interval = 2000;
 };

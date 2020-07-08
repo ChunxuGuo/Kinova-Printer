@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 """A helper program to test cartesian goals for the JACO and MICO arms."""
 
-import roslib; roslib.load_manifest('kinova_demo')
+import roslib #; roslib.load_manifest('kinova_demo')
 import rospy
 
 import sys
@@ -26,17 +26,19 @@ finger_maxDist = 18.9/2/1000  # max distance for one finger
 finger_maxTurn = 6800  # max thread rotation for one finger
 currentCartesianCommand = [0.212322831154, -0.257197618484, 0.509646713734, 1.63771402836, 1.11316478252, 0.134094119072] # default home in unit mq
 currentFingerPosition = [0.0, 0.0, 0.0]
+standard_state = [0.06, -0.55, 0.07, 0, 0, 0]
 
 # sending material control
-# serialPort = "COM4"
-# baudRate = 9000
-# ser = serial.Serial(serialPort, baudRate, timeout = 0.5)
+serialPort = "/dev/ttyACM0"
+baudRate = 9600
+ser = serial.Serial(serialPort, baudRate, timeout = 0.5)
 
 
 def cartesian_pose_client(position, orientation):
     """Send a cartesian goal to the action server."""
     action_address = '/' + prefix + 'driver/pose_action/tool_pose'
     client = actionlib.SimpleActionClient(action_address, kinova_msgs.msg.ArmPoseAction)
+    print (kinova_msgs.msg.ArmPoseAction)
     client.wait_for_server()
 
     goal = kinova_msgs.msg.ArmPoseGoal()
@@ -170,7 +172,8 @@ def unitParserCartesian(unit_, pose_value_, relative_):
         else:
             position_[i] = pose_value_[i]
 
-    # print('pose_value_ in unitParser 1: {}'.format(pose_value_))  # debug
+    print(currentCartesianCommand)
+    print('pose_value_ in unitParser 1: {}'.format(pose_value_))  # debug
 
     if unit_ == 'mq':
         if relative_:
@@ -184,11 +187,11 @@ def unitParserCartesian(unit_, pose_value_, relative_):
         orientation_deg = list(map(math.degrees, orientation_rad))
 
     elif unit_ == 'mdeg':
-        if relative_:
-            orientation_deg_list = list(map(math.degrees, currentCartesianCommand[3:]))
-            orientation_deg = [orientation_[i] + orientation_deg_list[i] for i in range(0,3)]
-        else:
-            orientation_deg = orientation_
+        # if relative_:
+        orientation_deg_list = list(map(math.degrees, currentCartesianCommand[3:]))
+        orientation_deg = [orientation_[i] + orientation_deg_list[i] for i in range(0,3)]
+        # else:
+        #     orientation_deg = orientation_
 
         orientation_rad = list(map(math.radians, orientation_deg))
         orientation_q = EulerXYZ2Quaternion(orientation_rad)
@@ -350,16 +353,19 @@ def gcodeParser():
     np.save('path.npy',path)
     a = np.load('path.npy')
     path_list = a.tolist()
+    
+    tmp = 0.0001
     for i in range(len(path_list)):
         if i == 0:
-            for t in range(3):
-                path_list[i].append(0)
+            path_list[i] = standard_state
             continue
-        path_list[i][0] = a[i][0] - a[i-1][0]
-        path_list[i][1] = a[i][1] - a[i-1][1]
-        path_list[i][2] = a[i][2] - a[i-1][2]
+        path_list[i][0] = a[i][0] - a[i-1][0] + standard_state[0]
+        path_list[i][1] = a[i][1] - a[i-1][1] + standard_state[1]
+        path_list[i][2] = a[i][2] - a[i-1][2] + standard_state[2]+tmp
         for t in range(3):
-            path_list[i].append(0)
+            path_list[i].append(standard_state[t+3])
+    txt = open("foo.txt", "w")
+    txt.write(str(path_list))
     return path_list
 
 def grab():
@@ -381,9 +387,9 @@ def grab():
     except rospy.ROSInterruptException:
         print('program interrupted before completion')
 
-    grabCartesian = [[0, 0, 0.2, 0, 0, -250], [0, 0, -0.2, 0, 0, 0]]
+    grabCartesian = [[0.0, -0.52, 0.27, 50, -60, -250], [0.01, -0.53, -0.02, 0, 0, 0]]
     for i in grabCartesian:
-        pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
+        pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, False)
 
         try:
 
@@ -396,7 +402,7 @@ def grab():
         except rospy.ROSInterruptException:
             print "program interrupted before completion"
 
-    finger_turn, finger_meter, finger_percent = unitParserFinger('percent', [20, 20, 0], True)
+    finger_turn, finger_meter, finger_percent = unitParserFinger('percent', [60, 60, 0], True)
     try:
         if finger_number == 0:
             print('Finger number is 0, check with "-h" to see how to use this node.')
@@ -451,42 +457,30 @@ if __name__ == '__main__':
     a = gcodeParser()
     # print a[0:10]
     temp = -0.1
-    test = [[temp, temp, 0, 0, 0, 70], [-0.2, -0.35, -0.40, 0, 0, 0], [0, 0, -0.05, 0, 0, 0]]
-    
-
+    test = [[temp, temp, 0, 0, 0, 70], [-0.1, -0.2, -0.40, 0, 0, 0]]
+    # test = [[temp, temp, 0, 0, 0, 70]]
     for i in test:
-
         pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
-
         try:
-
             poses = [float(n) for n in pose_mq]
-
             result = cartesian_pose_client(poses[:3], poses[3:])
-
             print('Cartesian pose sent!')
-
         except rospy.ROSInterruptException:
             print "program interrupted before completion"
 
-    # ser.write(b"r")
-    for i in a:
-
-        pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
-
+    # begin printing
+    ser.write(b"r")
+    for i in range(len(a)/50):
+        pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', a[i], False)
         try:
-
             poses = [float(n) for n in pose_mq]
-
             result = cartesian_pose_client(poses[:3], poses[3:])
-
             print('Cartesian pose sent!')
-
         except rospy.ROSInterruptException:
             print "program interrupted before completion"
+    ser.write(b"s")
 
-    # ser.write(b"s")
-
+    # Finally, grab it
     grab()
 
 

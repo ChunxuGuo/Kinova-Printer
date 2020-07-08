@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 """A helper program to test cartesian goals for the JACO and MICO arms."""
 
-import roslib; roslib.load_manifest('kinova_demo')
+import roslib #; roslib.load_manifest('kinova_demo')
 import rospy
 
 import sys
@@ -26,24 +26,28 @@ finger_maxDist = 18.9/2/1000  # max distance for one finger
 finger_maxTurn = 6800  # max thread rotation for one finger
 currentCartesianCommand = [0.212322831154, -0.257197618484, 0.509646713734, 1.63771402836, 1.11316478252, 0.134094119072] # default home in unit mq
 currentFingerPosition = [0.0, 0.0, 0.0]
+global_velocity = 0
 
 # sending material control
 # serialPort = "COM4"
 # baudRate = 9000
 # ser = serial.Serial(serialPort, baudRate, timeout = 0.5)
 
-def cartesian_velocity_client(position, orientation):
+def cartesian_velocity_client(direction, modulus):
     """Send a cartesian goal to the action server."""
-    action_address = '/' + prefix + '_driver/pose_action/tool_pose'
-    client = actionlib.SimpleActionClient(action_address, kinova_msgs.msg.ArmPoseAction)
+    action_address = '/' + prefix + '_driver/in/cartesian_velocity'
+    client = actionlib.SimpleActionClient(action_address, kinova_msgs.msg.PoseVelocity)
     client.wait_for_server()
 
-    goal = kinova_msgs.msg.ArmPoseGoal()
-    goal.pose.header = std_msgs.msg.Header(frame_id=(prefix + 'link_base'))
-    goal.pose.pose.position = geometry_msgs.msg.Point(
-        x=position[0], y=position[1], z=position[2])
-    goal.pose.pose.orientation = geometry_msgs.msg.Quaternion(
-        x=orientation[0], y=orientation[1], z=orientation[2], w=orientation[3])
+    goal = kinova_msgs.msg.PoseVelocity()
+    goal.twist_linear_x = float(global_velocity * direction[0])
+    goal.twist_linear_y = float(global_velocity * direction[1])
+    goal.twist_linear_z = float(global_velocity * direction[2])
+    # goal.pose.header = std_msgs.msg.Header(frame_id=(prefix + 'link_base'))
+    # goal.pose.pose.position = geometry_msgs.msg.Point(
+    #     x=position[0], y=position[1], z=position[2])
+    # goal.pose.pose.orientation = geometry_msgs.msg.Quaternion(
+    #     x=orientation[0], y=orientation[1], z=orientation[2], w=orientation[3])
 
     # print('goal.pose in client 1: {}'.format(goal.pose.pose)) # debug
 
@@ -385,6 +389,15 @@ def gcodeParser():
             path_list[i].append(0)
     return path_list
 
+def normalize(path_list):
+    modulus = []
+    directions = []
+    for i in range(len(path_list)):
+        
+        modulus.append((path_list[i][0]**2 + path_list[i][1]**2 + path_list[i][2]**2) ** 0.5)
+        directions.append([path_list[i][0] / modulus[i], path_list[i][0] / modulus[i], path_list[i][0] / modulus[i]])
+    return directions, modulus
+
 def grab():
     finger_turn, finger_meter, finger_percent = unitParserFinger('percent', [0, 0, 0], True)
     try:
@@ -473,35 +486,36 @@ if __name__ == '__main__':
     getcurrentCartesianCommand(prefix)
     a = gcodeParser()
     # print a[0:10]
+    path_list, modulus = normalize(a)
     temp = -0.1
     test = [[temp, temp, 0, 0, 0, 70], [-0.2, -0.35, -0.40, 0, 0, 0], [0, 0, -0.05, 0, 0, 0]]
     
 
-    for i in test:
+    # for i in test:
 
-        pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
+    #     pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
 
-        try:
+    #     try:
 
-            poses = [float(n) for n in pose_mq]
+    #         poses = [float(n) for n in pose_mq]
 
-            result = cartesian_pose_client(poses[:3], poses[3:])
+    #         result = cartesian_pose_client(poses[:3], poses[3:])
 
-            print('Cartesian pose sent!')
+    #         print('Cartesian pose sent!')
 
-        except rospy.ROSInterruptException:
-            print "program interrupted before completion"
+    #     except rospy.ROSInterruptException:
+    #         print "program interrupted before completion"
 
     # ser.write(b"r")
-    for i in a:
+    for i in range(len(path_list)):
 
-        pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
+        # pose_mq, pose_mdeg, pose_mrad = unitParserCartesian('mdeg', i, True)
 
         try:
 
-            poses = [float(n) for n in pose_mq]
+            # poses = [float(n) for n in pose_mq]
 
-            result = cartesian_pose_client(poses[:3], poses[3:])
+            result = cartesian_velocity_client(path_list, modulus)
 
             print('Cartesian pose sent!')
 
